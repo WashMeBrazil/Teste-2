@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Economia Total (Agua, Custo, Tempo, CO2)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js and Data Labels Plugin CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Modern Contrast (White/Light Gray BG, Blue 600, Green 600, Orange 600, Purple 600) -->
+    <!-- Application Structure Plan: Restructured the layout to place the main interactive control (Vehicle Inputs) discreetly while prominently displaying the calculated Total Washes at the top. This creates a clean flow: Input (hidden) -> Total Services (visible) -> Chart -> Key Results -> Conclusion. This structure maximizes the visual space for the high-impact data elements. -->
+    <!-- Visualization & Content Choices: Report Info: All four metrics (Water, Cost, Time, CO2) remain dynamic. -> Goal: Create a strong visual hierarchy where input is clearly separated from output/analysis. -> Viz/Presentation Method: Total services moved to header. Chart and Cards take full horizontal space. -> Interaction: Input fields drive all calculations. -> Justification: Improves user experience by following the natural top-down flow: Total Input -> Chart -> Key Results -> Conclusion. -> Library/Method: Chart.js (Canvas) for the chart, chartjs-plugin-datalabels, Vanilla JS for all logic. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; 
+        }
+        .highlight-blue {
+            color: #2563eb; 
+        }
+        .highlight-green {
+            color: #059669; 
+        }
+        .highlight-orange {
+            color: #ea580c; 
+        }
+        .highlight-purple {
+            color: #8b5cf6; /* Nova cor para CO2 */
+        }
+        .stat-card {
+            background-color: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05); 
+            transition: transform 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            min-height: 180px;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+        }
+        /* Ajuste do tamanho da fonte dos resultados para garantir que caibam em uma linha */
+        .stat-result {
+            font-size: 2.25rem; /* text-4xl no Tailwind */
+            line-height: 2.5rem;
+        }
+
+        /* Removendo estilos específicos do slider, mas mantendo o input number limpo */
+        input[type="number"] {
+            border: 2px solid #cbd5e1;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            font-weight: 600;
+            color: #1f2937;
+            width: 100%;
+        }
+
+        .calculator-controls {
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+        }
+        
+        /* --- ESTILOS DE IMPRESSÃO PDF (SOLUÇÃO FINAL) --- */
+        @media print {
+            /* 1. Ocultar TUDO no body por padrão */
+            body > * {
+                display: none !important;
+            }
+            
+            /* 2. Mostrar APENAS o container principal da calculadora */
+            .outer-container {
+                display: block !important;
+            }
+
+            /* 3. Garantir que o MAIN ocupe o espaço */
+            main {
+                display: flex !important;
+                flex-direction: column !important;
+                width: 100% !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                background-color: white !important;
+                margin: 0 !important;
+                padding: 1rem !important;
+                top: 0;
+                left: 0;
+            }
+
+            /* 4. Ocultar controles interativos */
+            #interactive-controls {
+                display: none !important;
+            }
+
+            /* 5. Estilos de layout e quebra de página */
+            .viability-section {
+                page-break-before: always !important; 
+            }
+            
+            .chart-container {
+                width: 100% !important;
+                max-width: 100% !important;
+                height: 400px !important; 
+            }
+
+            /* 6. Cores para impressão (ativar gráficos de fundo) */
+            .stat-card {
+                border: 1px solid #ccc;
+                box-shadow: none !important;
+                -webkit-print-color-adjust: exact; 
+                color-adjust: exact;
+            }
+            .highlight-blue, .highlight-green, .highlight-orange, .highlight-purple {
+                color: #1f2937 !important; 
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+    <!-- Adicionando um container externo para isolamento de impressão -->
+    <div class="flex flex-col items-center justify-center p-4 outer-container">
+        <main class="w-full max-w-7xl mx-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-10 md:p-12">
+            <header class="text-center mb-6">
+                <h1 class="text-4xl sm:text-5xl font-extrabold text-slate-900 mb-2">Calculadora de Economia Total</h1>
+                <p class="text-lg text-slate-500 max-w-4xl mx-auto">Avalie o impacto ambiental, financeiro e operacional do nosso serviço Wash Me.</p>
+            </header>
+            
+            <!-- TOTAL DE SERVIÇOS (TOPO - FOCO DO RELATÓRIO) -->
+            <section class="max-w-5xl mx-auto mb-10 bg-blue-50/50 p-4 rounded-xl border border-blue-200 total-area-print-focus">
+                <div class="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-8">
+                    <label class="text-2xl font-bold text-slate-700">TOTAL DE SERVIÇOS SIMULADOS:</label>
+                    <span id="total-washes-count" class="text-5xl font-extrabold highlight-blue">0</span>
+                </div>
+            </section>
+            
+            <!-- CONTROLE DE SERVIÇOS (PARA INTERAÇÃO - VISÍVEL NA TELA) -->
+            <section class="mb-6 max-w-5xl mx-auto" id="interactive-controls">
+                <div class="calculator-controls bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <p class="text-sm font-semibold text-slate-600 mb-4 border-b pb-2 border-slate-200 text-center">DEFINA O VOLUME DE SERVIÇOS POR CATEGORIA</p>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <!-- Cavalo -->
+                        <div class="input-group">
+                            <label for="input-cavalo" class="block text-sm font-medium text-slate-600 mb-2 text-center">Cavalo</label>
+                            <input id="input-cavalo" type="number" min="0" value="0" class="focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <!-- Carreta -->
+                        <div class="input-group">
+                            <label for="input-carreta" class="block text-sm font-medium text-slate-600 mb-2 text-center">Carreta</label>
+                            <input id="input-carreta" type="number" min="0" value="0" class="focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <!-- Truck -->
+                        <div class="input-group">
+                            <label for="input-truck" class="block text-sm font-medium text-slate-600 mb-2 text-center">Truck</label>
+                            <input id="input-truck" type="number" min="0" value="0" class="focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <!-- Toco -->
+                        <div class="input-group">
+                            <label for="input-toco" class="block text-sm font-medium text-slate-600 mb-2 text-center">Toco</label>
+                            <input id="input-toco" type="number" min="0" value="0" class="focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <!-- 3/4 -->
+                        <div class="input-group">
+                            <label for="input-tres-quartos" class="block text-sm font-medium text-slate-600 mb-2 text-center">3/4</label>
+                            <input id="input-tres-quartos" type="number" min="0" value="0" class="focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- GRÁFICO E RESULTADOS (ALINHAMENTO TOTAL) -->
+            <div class="space-y-10">
+                
+                <!-- GRÁFICO (LARGURA TOTAL) -->
+                <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-lg print-only-section">
+                    <h2 class="text-2xl font-bold text-center text-slate-800 mb-6">Comparativo de Consumo de Água (Litros)</h2>
+                    <p class="text-base text-slate-600 text-center mb-4 max-w-4xl mx-auto">
+                        O gráfico visualiza o consumo total de água entre os dois métodos para o número de serviços simulado.
+                    </p>
+                    <div class="chart-container relative w-full max-w-full mx-auto h-96 md:h-[450px]">
+                        <canvas id="waterUsageChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- CARTÕES DE ECONOMIA (LARGURA TOTAL ABAIXO DO GRÁFICO) -->
+                <section class="mb-12 print-only-section">
+                    <h2 class="text-2xl font-bold text-slate-700 mb-6 text-center">ECONOMIA TOTAL POR PERÍODO</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <!-- Cartão de Economia de Água -->
+                        <div class="stat-card border-b-8 border-blue-500 p-4 sm:p-6" style="border-left-color: #3b82f6;">
+                            <div class="text-4xl mb-2">??</div>
+                            <h3 class="text-lg font-semibold text-slate-600 mb-1">Água Economizada</h3>
+                            <p id="water-saved" class="stat-result font-extrabold highlight-blue whitespace-nowrap">0 L</p>
+                            <p class="text-xs text-slate-400 mt-1">Volume que não será gasto.</p>
+                        </div>
+
+                        <!-- Cartão de Economia de CO2 -->
+                        <div class="stat-card border-b-8 border-purple-500 p-4 sm:p-6" style="border-left-color: #a78bfa;">
+                            <div class="text-4xl mb-2">??</div>
+                            <h3 class="text-lg font-semibold text-slate-600 mb-1">Não-Emissão de CO2</h3>
+                            <p id="co2-saved" class="stat-result font-extrabold highlight-purple whitespace-nowrap">0.00 kg</p>
+                            <p class="text-xs text-slate-400 mt-1">Quilogramas de CO2 evitados.</p>
+                        </div>
+
+                        <!-- Cartão de Economia de Custo -->
+                        <div class="stat-card border-b-8 border-green-500 p-4 sm:p-6" style="border-left-color: #10b981;">
+                            <div class="text-4xl mb-2">??</div>
+                            <h3 class="text-lg font-semibold text-slate-600 mb-1">Custo Economizado</h3>
+                            <p id="cost-saved" class="stat-result font-extrabold highlight-green whitespace-nowrap">R$ 0,00</p>
+                            <p class="text-xs text-slate-400 mt-1">Combustível evitado no deslocamento.</p>
+                        </div>
+                        
+                        <!-- Cartão de Tempo -->
+                        <div class="stat-card border-b-8 border-orange-500 p-4 sm:p-6" style="border-left-color: #f97316;">
+                            <div class="text-4xl mb-2">??</div>
+                            <h3 class="text-lg font-semibold text-slate-600 mb-1">Tempo Economizado</h3>
+                            <p id="time-saved" class="stat-result font-extrabold highlight-orange whitespace-nowrap">0 min</p>
+                            <p class="text-xs text-slate-400 mt-1">Minutos de deslocamento evitado.</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+
+            <!-- Estudo de Viabilidade (Full Width) -->
+            <section class="mt-8 pt-8 border-t-4 border-blue-500/50 viability-section print-only-section" id="viability-report">
+                <h2 class="text-3xl font-bold text-slate-800 text-center mb-6">Estudo de Viabilidade: Migração para o Serviço Wash Me</h2>
+                <div class="max-w-4xl mx-auto text-lg text-slate-700 space-y-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <p>A simulação acima demonstra que a adoção do serviço de lavagem ecológica Wash Me não é apenas uma escolha ambientalmente responsável, mas um imperativo estratégico e financeiro. Ao eliminar a necessidade de deslocamento para lavadores externos e reduzir drasticamente o consumo de água, geramos um valor agregado tangível para a sua operação.</p>
+
+                    <p>Com base na simulação atual de <span id="viability-washes" class="font-extrabold highlight-blue">0</span> serviços, o impacto imediato é notável:</p>
+
+                    <ul class="list-disc list-inside space-y-2 pl-4">
+                        <li class="font-semibold text-blue-700">Benefício Ambiental: Você evita o consumo de <span id="viability-water" class="font-extrabold text-blue-900">0 Litros</span> de água, e poupa a emissão de <span id="viability-co2" class="font-extrabold text-purple-700">0.00 kg de CO2</span>, fortalecendo seu compromisso com a sustentabilidade.</li>
+                        <li class="font-semibold text-green-700">Benefício Financeiro: A eliminação do deslocamento resulta em uma economia direta de <span id="viability-cost" class="font-extrabold text-green-900">R$ 0,00</span> em custos de combustível. Este valor se torna exponencial em contratos de maior volume.</li>
+                        <li class="font-semibold text-orange-700">Benefício Operacional: Sua equipe economiza <span id="viability-time" class="font-extrabold text-orange-700">0 min</span> de tempo de deslocamento improdutivo. Este tempo pode ser redirecionado para serviços de maior valor agregado ou para aumentar a capacidade de atendimento.</li>
+                    </ul>
+                    
+                    <p class="pt-4 font-bold text-slate-800">Conclusão: A transição para o serviço Wash Me é um investimento que se paga através da economia de recursos, da otimização do tempo e da demonstração de responsabilidade ambiental. Esta solução oferece maior eficiência com total compromisso ecológico.</p>
+                </div>
+            </section>
+
+            <!-- Observações Técnicas (Full Width) -->
+            <section class="mt-8 max-w-4xl mx-auto text-sm text-slate-600 p-6 bg-slate-100 rounded-xl border border-slate-300 print-only-section" id="technical-notes">
+                <h3 class="text-lg font-bold text-slate-700 mb-3">Observação Técnica e Parâmetros Utilizados</h3>
+                <p class="mb-2">Esta simulação utiliza os seguintes parâmetros fixos por cada lavagem tradicional evitada:</p>
+                <ul class="list-disc list-inside space-y-1 pl-4">
+                    <li>Consumo de Água (Tradicional vs. Ecológico): 400 Litros (Tradicional) vs. 10 Litros (Ecológico). Economia de 390 Litros por Lavagem.</li>
+                    <li>Deslocamento Evitado: 10 km (5 km ida + 5 km volta).</li>
+                    <li>Economia de Custo (Combustível): Baseada em R$ 5.99/Litro e eficiência de 10 km/Litro. Economia de R$ 5.99 por Lavagem.</li>
+                    <li>Economia de Tempo: 20 minutos de deslocamento evitado por Lavagem.</li>
+                    <li>Não-Emissão de CO2: Baseada na emissão média de 0.231 kg de CO2 por km percorrido. Economia de 2.31 kg de CO2 por Lavagem.</li>
+                </ul>
+                <p class="mt-2 text-xs text-slate-500">Os cálculos são projetados para ilustrar o potencial máximo de economia. Valores reais podem variar conforme a eficiência do veículo e o preço atual do combustível.</p>
+            </section>
+
+
+        </main>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const ECOLOGICAL_WASH_LITERS = 10;
+            const TRADITIONAL_WASH_LITERS = 400;
+
+            // PARÂMETROS FIXOS
+            const DISTANCE_KM = 10; 
+            const FUEL_COST_PER_LITER = 5.99;
+            const VEHICLE_EFFICIENCY_KML = 10; 
+            const TIME_PER_WASH_MINUTES = 20; 
+            const CO2_EMISSION_FACTOR_KG_KM = 0.231;
+
+            // CUSTOS POR LAVAGEM EVITADA
+            const COST_PER_WASH_AVOIDED = (DISTANCE_KM / VEHICLE_EFFICIENCY_KML) * FUEL_COST_PER_LITER; 
+            const CO2_PER_WASH_AVOIDED_KG = DISTANCE_KM * CO2_EMISSION_FACTOR_KG_KM;
+
+            // Novos elementos de input (para leitura)
+            const inputCavalo = document.getElementById('input-cavalo');
+            const inputCarreta = document.getElementById('input-carreta');
+            const inputTruck = document.getElementById('input-truck');
+            const inputToco = document.getElementById('input-toco');
+            const inputTresQuartos = document.getElementById('input-tres-quartos');
+            const totalWashesCountEl = document.getElementById('total-washes-count');
+            
+            // Elementos de Saída Principais
+            const waterSavedEl = document.getElementById('water-saved');
+            const co2SavedEl = document.getElementById('co2-saved'); 
+            const costSavedEl = document.getElementById('cost-saved'); 
+            const timeSavedEl = document.getElementById('time-saved'); 
+            
+            // Elementos do Estudo de Viabilidade
+            const viabilityWashesEl = document.getElementById('viability-washes');
+            const viabilityWaterEl = document.getElementById('viability-water');
+            const viabilityCO2El = document.getElementById('viability-co2');
+            const viabilityCostEl = document.getElementById('viability-cost');
+            const viabilityTimeEl = document.getElementById('viability-time');
+
+            // --- FUNÇÕES DE FORMATAÇÃO ---
+            const formatNumber = (num, isCurrency = false, decimalPlaces = 0) => {
+                if (isCurrency) {
+                    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                return num.toLocaleString('pt-BR', { maximumFractionDigits: decimalPlaces, minimumFractionDigits: decimalPlaces });
+            };
+
+            const formatTime = (totalMinutes) => {
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = Math.round(totalMinutes % 60); 
+                if (hours > 0) {
+                    return ${hours}h ${minutes}m;
+                }
+                return ${minutes} min;
+            };
+            // ------------------------------------------------------------------
+
+            const ctx = document.getElementById('waterUsageChart').getContext('2d');
+            let waterUsageChart; 
+
+            function initializeChart(initialWashes) {
+                const totalEcoUsage = initialWashes * ECOLOGICAL_WASH_LITERS;
+                const totalTraditionalUsage = initialWashes * TRADITIONAL_WASH_LITERS;
+                const chartMax = totalTraditionalUsage * 1.10; // 10% a mais que o máximo
+
+                waterUsageChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Lavagem Ecológica', 'Lavagem Tradicional'],
+                        datasets: [{
+                            label: 'Consumo de Água (Litros)',
+                            data: [totalEcoUsage, totalTraditionalUsage], 
+                            backgroundColor: [
+                                'rgba(16, 185, 129, 0.9)', 
+                                'rgba(239, 68, 68, 0.9)' 
+                            ],
+                            borderColor: [
+                                'rgba(16, 185, 129, 1)',
+                                'rgba(239, 68, 68, 1)'
+                            ],
+                            borderWidth: 1.5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += formatNumber(context.parsed.y) + ' L';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            },
+                            datalabels: {
+                                color: '#1e3a8a', 
+                                anchor: 'end', 
+                                align: 'top', 
+                                offset: 8,      
+                                font: {
+                                    weight: '800',
+                                    size: 14 
+                                },
+                                formatter: function(value, context) {
+                                    return formatNumber(value) + ' L';
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: '#e5e7eb' 
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Litros',
+                                    font: {
+                                        size: 16,
+                                        weight: '600'
+                                    }
+                                },
+                                suggestedMax: chartMax > 0 ? chartMax : TRADITIONAL_WASH_LITERS * 1.1 // Define o máximo sugerido
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    padding: 10,
+                                    font: {
+                                        size: 14
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+
+            function updateValues() {
+                // 1. LÊ E SOMA OS VALORES DOS INPUTS
+                // O bloco de inputs está VISÍVEL para interação
+                const washesCavalo = parseInt(inputCavalo.value) || 0;
+                const washesCarreta = parseInt(inputCarreta.value) || 0;
+                const washesTruck = parseInt(inputTruck.value) || 0;
+                const washesToco = parseInt(inputToco.value) || 0;
+                const washesTresQuartos = parseInt(inputTresQuartos.value) || 0;
+
+                // Total de serviços é a soma dos cinco tipos
+                const totalWashes = washesCavalo + washesCarreta + washesTruck + washesToco + washesTresQuartos;
+
+                totalWashesCountEl.textContent = formatNumber(totalWashes);
+                
+                // 2. CÁLCULOS DE ÁGUA, CUSTO, TEMPO E CO2
+                const totalEcoUsage = totalWashes * ECOLOGICAL_WASH_LITERS;
+                const totalTraditionalUsage = totalWashes * TRADITIONAL_WASH_LITERS;
+                const totalWaterSaved = totalTraditionalUsage - totalEcoUsage;
+                const totalCostSaved = totalWashes * COST_PER_WASH_AVOIDED;
+                const totalTimeSavedMinutes = totalWashes * TIME_PER_WASH_MINUTES;
+                const totalCO2Saved = totalWashes * CO2_PER_WASH_AVOIDED_KG; 
+
+
+                // 3. ATUALIZAÇÃO DA INTERFACE PRINCIPAL
+                waterSavedEl.textContent = ${formatNumber(totalWaterSaved)} L;
+                co2SavedEl.textContent = ${formatNumber(totalCO2Saved, false, 2)} kg; 
+                costSavedEl.textContent = totalCostSaved > 0 ? formatNumber(totalCostSaved, true) : 'R$ 0,00';
+                timeSavedEl.textContent = totalWashes > 0 ? formatTime(totalTimeSavedMinutes) : '0 min';
+                
+                // 4. ATUALIZAÇÃO DO ESTUDO DE VIABILIDADE
+                viabilityWashesEl.textContent = formatNumber(Math.round(totalWashes));
+                viabilityWaterEl.textContent = ${formatNumber(totalWaterSaved)} Litros;
+                viabilityCO2El.textContent = ${formatNumber(totalCO2Saved, false, 2)} kg de CO2;
+                viabilityCostEl.textContent = totalCostSaved > 0 ? formatNumber(totalCostSaved, true) : 'R$ 0,00';
+                viabilityTimeEl.textContent = totalWashes > 0 ? formatTime(totalTimeSavedMinutes) : '0 min';
+
+                // 5. Atualiza o gráfico
+                if (waterUsageChart) {
+                    const newTotalTraditionalUsage = totalWashes * TRADITIONAL_WASH_LITERS;
+                    const newChartMax = newTotalTraditionalUsage * 1.10; // 10% a mais
+
+                    waterUsageChart.data.datasets[0].data[0] = totalEcoUsage;
+                    waterUsageChart.data.datasets[0].data[1] = newTotalTraditionalUsage;
+                    
+                    // Atualiza o suggestedMax dinamicamente
+                    waterUsageChart.options.scales.y.suggestedMax = newChartMax > 0 ? newChartMax : TRADITIONAL_WASH_LITERS * 1.1;
+
+                    waterUsageChart.update();
+                }
+            }
+
+            // Inicializa o gráfico
+            initializeChart(0);
+            
+            // Event Listeners em todos os campos de input
+            const inputElements = [inputCavalo, inputCarreta, inputTruck, inputToco, inputTresQuartos];
+            inputElements.forEach(input => {
+                input.addEventListener('input', updateValues);
+            });
+            
+            // Inicialização da interface (com 0 serviços)
+            updateValues();
+        });
+    </script>
+</body>
+</html>
